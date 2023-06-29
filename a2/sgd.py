@@ -86,7 +86,8 @@ def sgd(f, x0, step, iterations, postprocessing=None, useSaved=False, PRINT_EVER
 
         loss = None
         ### YOUR CODE HERE (~2 lines)
-
+        loss, grads = f(x)
+        x -= step * grads
         ### END YOUR CODE
 
         x = postprocessing(x)

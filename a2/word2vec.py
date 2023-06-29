@@ -18,7 +18,7 @@ def sigmoid(x):
     """
 
     ### YOUR CODE HERE (~1 Line)
-
+    s = 1 / (1 + np.exp(-x))
     ### END YOUR CODE
 
     return s
@@ -59,6 +59,33 @@ def naiveSoftmaxLossAndGradient(centerWordVec, outsideWordIdx, outsideVectors, d
     ### Please use the provided softmax function (imported earlier in this file)
     ### This numerically stable implementation helps you avoid issues pertaining
     ### to integer overflow.
+
+    # Obtain y_hat (i.e., the conditional probability distribution P(O = o | C = c))
+    # by taking vector dot products and applying softmax
+    y_hat = softmax(np.dot(outsideVectors, centerWordVec))  # (num words in vocab, )
+    # We can also get y_hat in a single line: y_hat = softmax(outsideVectors @ centerWordVec)
+
+    # For a single pair of words c and o, the loss is given by:
+    # J(v_c, o, U) = -log P(O = o | C = c) = -log (y_hat[o])
+    loss = -np.log(y_hat[outsideWordIdx])
+
+    # Gradient calculation
+    # Generate the ground-truth one-hot vector, [0, ..., 0, outsideWordIdx=1, 0, ..., 0]
+    y = np.zeros_like(y_hat)
+    y[outsideWordIdx] = 1
+
+    # Inner product results in a scalar
+    gradCenterVec = np.dot(y_hat - y, outsideVectors)  # (word vector length, )
+    # Or gradCenterVec = np.dot(outsideVectors.T, y_hat - y)
+
+    # Outer product results in a matrix
+    gradOutsideVecs = np.outer(
+        y_hat - y, centerWordVec
+    )  # (num words in vocab, word vector length)
+
+    # Sanity check the dimensions
+    assert gradCenterVec.shape == centerWordVec.shape
+    assert gradOutsideVecs.shape == outsideVectors.shape
 
     ### END YOUR CODE
 
@@ -101,7 +128,34 @@ def negSamplingLossAndGradient(
 
     ### YOUR CODE HERE (~10 Lines)
 
+    gradOutsideVecs = np.zeros_like(outsideVectors)
+
     ### Please use your implementation of sigmoid in here.
+    # Calculate the first term of the Negative Sampling loss
+    # -log(σ(u_o^T⋅v_c))
+    y_hat = sigmoid(np.dot(outsideVectors[outsideWordIdx], centerWordVec))
+    loss = -np.log(y_hat)
+
+    # u_o(σ(u_o^T⋅v_c) - 1) -> u_o(y_hat - 1)
+    gradCenterVec = np.dot(
+        y_hat - 1, outsideVectors[outsideWordIdx]
+    )  # w.r.t center word
+    gradOutsideVecs[outsideWordIdx] = np.dot(
+        y_hat - 1, centerWordVec
+    )  # w.r.t outside word
+
+    # Calculate the second term of the Negative Sampling loss
+    # -Σ log(σ(-u_k^T⋅v_c))
+    for i in range(K):
+        w_k = indices[i + 1]  # because first index is outside word index
+        y_k_hat = sigmoid(-np.dot(outsideVectors[w_k], centerWordVec))
+        loss += -np.log(y_k_hat)
+
+        # -Σ u_k(σ(-u_k^T⋅v_c) - 1) -> -Σ u_k(y_k_hat - 1) -> Σ u_k(1 - y_k_hat)
+        gradCenterVec += np.dot(1.0 - y_k_hat, outsideVectors[w_k])  # w.r.t center word
+        gradOutsideVecs[w_k] += np.dot(
+            1.0 - y_k_hat, centerWordVec
+        )  #  w.r.t one of the k negative samples
 
     ### END YOUR CODE
 
@@ -155,6 +209,23 @@ def skipgram(
     gradOutsideVectors = np.zeros(outsideVectors.shape)
 
     ### YOUR CODE HERE (~8 Lines)
+
+    # Skip-gram model predicts outside words from the center word
+
+    # Get center word vector first from currentCenterWord
+    centerWordIdx = word2Ind[currentCenterWord]
+    centerWordVec = centerWordVectors[centerWordIdx]
+
+    for outsideWord in outsideWords:
+        outsideWordIdx = word2Ind[outsideWord]
+
+        stepLoss, gradCenter, gradOutside = word2vecLossAndGradient(
+            centerWordVec, outsideWordIdx, outsideVectors, dataset
+        )
+
+        loss += stepLoss
+        gradCenterVecs[centerWordIdx] += gradCenter
+        gradOutsideVectors += gradOutside
 
     ### END YOUR CODE
 
