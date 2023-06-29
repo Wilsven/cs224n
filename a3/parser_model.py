@@ -146,7 +146,6 @@ class ParserModel(nn.Module):
 
 
 if __name__ == "__main__":
-
     parser = argparse.ArgumentParser(
         description="Simple sanity check for parser_model.py"
     )
