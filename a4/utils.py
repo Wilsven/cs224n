@@ -35,7 +35,23 @@ def pad_sents(sents, pad_token):
     sents_padded = []
 
     ### YOUR CODE HERE (~6 Lines)
+    import copy
 
+    # Get the length of the longest sentence
+    max_len = len(max(sents, key=lambda x: len(x)))
+
+    # Deep copy list to avoid making changes to original list
+    for sent in copy.deepcopy(sents):
+        # Get sentence length
+        sent_len = len(sent)
+
+        # While sentence length is not yet the same length
+        # as the longest sentence, we pad the sentence
+        while sent_len != max_len:
+            sent.append(pad_token)
+            sent_len += 1
+
+        sents_padded.append(sent)
     ### END YOUR CODE
 
     return sents_padded
