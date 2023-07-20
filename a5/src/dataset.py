@@ -173,7 +173,84 @@ class CharCorruptionDataset(Dataset):
 
     def __getitem__(self, idx):
         # TODO [part e]: see spec above
-        raise NotImplementedError
+
+        # 0. Use the idx argument of __getitem__ to retrieve the element of self.data
+        # at the given index. We'll call the resulting data entry a document.
+        doc = self.data[idx]
+
+        # 1. Randomly truncate the document to a length no less than 4 characters,
+        # and no more than int(self.block_size*7/8) characters.
+        import random
+
+        rand_length = random.randint(4, int(self.block_size * 7 / 8))
+        truncated_doc = doc[:rand_length]
+
+        # 2. Now, break the (truncated) document into three substrings:
+        #     [prefix] [masked_content] [suffix]
+
+        # In other words, choose three strings prefix, masked_content and suffix
+        # such that prefix + masked_content + suffix = [the original document].
+        # The length of [masked_content] should be random, and 1/4 the length of the
+        # truncated document on average.
+
+        # Take the length of the (randomly truncated) document.
+        truncated_doc_length = len(truncated_doc)
+
+        # Add a random perturbation to the length of the masked content with randint().
+        # Just pick the right bounds, for example, -1/8 and 1/8 of the truncated length
+        rand_perturbation = random.randint(
+            int(-0.125 * truncated_doc_length), int(0.125 * truncated_doc_length)
+        )
+
+        # Compute expected_mask_len by using 1/4 of the truncated document length
+        # and adding a perturbation.
+        expected_mask_len = int(0.25 * truncated_doc_length) + rand_perturbation
+        # This gets you a masked length with minimum length of 1/8 of truncated length and
+        # maximum length of 3/8 of the truncated length, and the average is 1/4.
+
+        # Randomly determine where to start the masked portion somewhere between the start
+        # of the truncated document and the last index such that there are as many characters
+        # left in the sequence as we determined the mask length should be
+        start_mask = random.randint(0, truncated_doc_length - expected_mask_len)
+
+        masked_content = truncated_doc[start_mask : start_mask + expected_mask_len]
+        prefix = truncated_doc[:start_mask]
+        suffix = truncated_doc[start_mask + expected_mask_len :]
+
+        # 3. Rearrange these substrings into the following form:
+
+        #     [prefix] MASK_CHAR [suffix] MASK_CHAR [masked_content] [pads]
+
+        # This resulting string, denoted masked_string, serves as the output example.
+        # Here MASK_CHAR is the masking character defined in Vocabulary Specification,
+        # and [pads] is a string of repeated PAD_CHAR characters chosen so that the
+        # entire string is of length self.block_size.
+
+        # Intuitively, the [masked_content], a string, is removed from the document and
+        # replaced with MASK_CHAR (the masking character defined in Vocabulary
+        # Specification). After the suffix of the string, the MASK_CHAR is seen again,
+        # followed by the content that was removed, and the padding characters.
+
+        masked_string = (
+            prefix + self.MASK_CHAR + suffix + self.MASK_CHAR + masked_content
+        )
+        # Determine how many padding tokens to add until masked_string is length of self.block_size
+        masked_string += self.PAD_CHAR * (self.block_size - len(masked_string))
+
+        # 4. We now use masked_string to construct the input and output example pair. To
+        # do so, simply take the input string to be masked_string[:-1], and the output
+        # string to be masked_string[1:]. In other words, for each character, the goal is
+        # to predict the next character in the masked string.
+
+        input = masked_string[:-1]
+        output = masked_string[1:]
+
+        # 5. Making use of the vocabulary that you defined, encode the resulting input
+        # and output strings as Long tensors and return the resulting data point.
+        x = torch.tensor([self.stoi[c] for c in input], dtype=torch.long)
+        y = torch.tensor([self.stoi[c] for c in output], dtype=torch.long)
+
+        return x, y
 
 
 """

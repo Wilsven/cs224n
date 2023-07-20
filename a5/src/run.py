@@ -73,9 +73,22 @@ Don't change above here; write your code below
 """
 
 if args.variant == "vanilla":
-    pass  # TODO [part c]: Make some model here
+    # TODO [part c]: Make some model here
+    model = model.GPT(config=mconf)
+    model = model.to(device)
 elif args.variant == "synthesizer":
-    pass  # TODO [part g]: Make some other model here
+    # TODO [part g]: Make some other model here
+    myconf = model.GPTConfig(
+        pretrain_dataset.vocab_size,
+        pretrain_dataset.block_size,
+        synthesizer=True,
+        n_layer=4,
+        n_head=8,
+        n_embd=256,
+    )
+
+    model = model.GPT(config=myconf)
+    model = model.to(device)
 
 # From here on, your code should be identical independent of which
 # variant (vanilla or synthesizer) has been chosen.
@@ -98,7 +111,20 @@ if args.function == "pretrain":
     #     warmup_tokens=512*20
     #     final_tokens=200*len(pretrain_dataset)*block_size
     #     num_workers=4
-    raise NotImplementedError
+
+    tconf = trainer.TrainerConfig(
+        max_epochs=650,
+        batch_size=128,
+        learning_rate=6e-3,
+        lr_decay=True,
+        warmup_tokens=512 * 20,
+        final_tokens=200 * len(pretrain_dataset) * block_size,
+        num_workers=4 if torch.cuda.is_available() else 0,
+    )
+
+    trainer = trainer.Trainer(model, pretrain_dataset, None, tconf)
+    trainer.train()
+
 elif args.function == "finetune":
     assert args.writing_params_path is not None
     assert args.finetune_corpus_path is not None
@@ -130,12 +156,55 @@ elif args.function == "finetune":
     #         warmup_tokens=512*20
     #         final_tokens=200*len(pretrain_dataset)*block_size
     #         num_workers=4
-    raise NotImplementedError
+
+    text = open(args.finetune_corpus_path, "r", encoding="utf-8").read()
+    finetune_dataset = dataset.NameDataset(pretrain_dataset, text)
+
+    # Finetuning WITH a pretrained model
+    if args.reading_params_path:
+        # Initialize a trainer instance and kick off finetuning
+        tconf = trainer.TrainerConfig(
+            max_epochs=10,
+            batch_size=256,
+            learning_rate=6e-4,
+            lr_decay=True,
+            warmup_tokens=512 * 20,
+            final_tokens=200 * len(pretrain_dataset) * block_size,
+            num_workers=4 if torch.cuda.is_available() else 0,
+            ckpt_path=args.writing_params_path,
+        )
+
+        model.load_state_dict(torch.load(args.reading_params_path))
+        model.eval()
+
+        trainer = trainer.Trainer(model, finetune_dataset, None, tconf)
+
+    # Finetuning WITHOUT a pretrained model
+    else:
+        # Initialize a trainer instance and kick off finetuning
+        tconf = trainer.TrainerConfig(
+            max_epochs=75,
+            batch_size=256,
+            learning_rate=6e-4,
+            lr_decay=True,
+            warmup_tokens=512 * 20,
+            final_tokens=200 * len(pretrain_dataset) * block_size,
+            num_workers=4 if torch.cuda.is_available() else 0,
+            ckpt_path=args.writing_params_path,
+        )
+
+        trainer = trainer.Trainer(model, finetune_dataset, None, tconf)
+
+    # Finetune
+    trainer.train()
+
 elif args.function == "evaluate":
     assert args.outputs_path is not None
     assert args.reading_params_path is not None
     assert args.eval_corpus_path is not None
-    model.load_state_dict(torch.load(args.reading_params_path))
+    model.load_state_dict(
+        torch.load(args.reading_params_path, map_location=torch.device(device))
+    )
     correct = 0
     total = 0
     with open(args.outputs_path, "w") as fout:
